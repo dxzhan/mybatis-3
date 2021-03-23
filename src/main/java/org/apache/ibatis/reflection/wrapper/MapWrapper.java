@@ -1,5 +1,5 @@
 /**
- *    Copyright 2009-2017 the original author or authors.
+ *    Copyright 2009-2021 the original author or authors.
  *
  *    Licensed under the Apache License, Version 2.0 (the "License");
  *    you may not use this file except in compliance with the License.
@@ -63,12 +63,12 @@ public class MapWrapper extends BaseWrapper {
 
   @Override
   public String[] getGetterNames() {
-    return map.keySet().toArray(new String[map.keySet().size()]);
+    return map.keySet().toArray(new String[0]);
   }
 
   @Override
   public String[] getSetterNames() {
-    return map.keySet().toArray(new String[map.keySet().size()]);
+    return map.keySet().toArray(new String[0]);
   }
 
   @Override
@@ -135,7 +135,7 @@ public class MapWrapper extends BaseWrapper {
 
   @Override
   public MetaObject instantiatePropertyValue(String name, PropertyTokenizer prop, ObjectFactory objectFactory) {
-    HashMap<String, Object> map = new HashMap<String, Object>();
+    HashMap<String, Object> map = new HashMap<>();
     set(prop, map);
     return MetaObject.forObject(map, metaObject.getObjectFactory(), metaObject.getObjectWrapperFactory(), metaObject.getReflectorFactory());
   }
