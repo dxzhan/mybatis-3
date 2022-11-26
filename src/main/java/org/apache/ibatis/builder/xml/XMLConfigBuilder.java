@@ -1,11 +1,11 @@
 /*
- *    Copyright 2009-2021 the original author or authors.
+ *    Copyright 2009-2022 the original author or authors.
  *
  *    Licensed under the Apache License, Version 2.0 (the "License");
  *    you may not use this file except in compliance with the License.
  *    You may obtain a copy of the License at
  *
- *       http://www.apache.org/licenses/LICENSE-2.0
+ *       https://www.apache.org/licenses/LICENSE-2.0
  *
  *    Unless required by applicable law or agreed to in writing, software
  *    distributed under the License is distributed on an "AS IS" BASIS,
@@ -67,7 +67,11 @@ public class XMLConfigBuilder extends BaseBuilder {
   }
 
   public XMLConfigBuilder(Reader reader, String environment, Properties props) {
-    this(new XPathParser(reader, true, props, new XMLMapperEntityResolver()), environment, props);
+    this(Configuration.class, reader, environment, props);
+  }
+
+  public XMLConfigBuilder(Class<? extends Configuration> configClass, Reader reader, String environment, Properties props) {
+    this(configClass, new XPathParser(reader, true, props, new XMLMapperEntityResolver()), environment, props);
   }
 
   public XMLConfigBuilder(InputStream inputStream) {
@@ -79,11 +83,15 @@ public class XMLConfigBuilder extends BaseBuilder {
   }
 
   public XMLConfigBuilder(InputStream inputStream, String environment, Properties props) {
-    this(new XPathParser(inputStream, true, props, new XMLMapperEntityResolver()), environment, props);
+    this(Configuration.class, inputStream, environment, props);
   }
 
-  private XMLConfigBuilder(XPathParser parser, String environment, Properties props) {
-    super(new Configuration());
+  public XMLConfigBuilder(Class<? extends Configuration> configClass, InputStream inputStream, String environment, Properties props) {
+    this(configClass, new XPathParser(inputStream, true, props, new XMLMapperEntityResolver()), environment, props);
+  }
+
+  private XMLConfigBuilder(Class<? extends Configuration> configClass, XPathParser parser, String environment, Properties props) {
+    super(newConfig(configClass));
     ErrorContext.instance().resource("SQL Mapper Configuration");
     this.configuration.setVariables(props);
     this.parsed = false;
@@ -269,7 +277,9 @@ public class XMLConfigBuilder extends BaseBuilder {
     configuration.setLogPrefix(props.getProperty("logPrefix"));
     configuration.setConfigurationFactory(resolveClass(props.getProperty("configurationFactory")));
     configuration.setShrinkWhitespacesInSql(booleanValueOf(props.getProperty("shrinkWhitespacesInSql"), false));
+    configuration.setArgNameBasedConstructorAutoMapping(booleanValueOf(props.getProperty("argNameBasedConstructorAutoMapping"), false));
     configuration.setDefaultSqlProviderType(resolveClass(props.getProperty("defaultSqlProviderType")));
+    configuration.setNullableOnForEach(booleanValueOf(props.getProperty("nullableOnForEach"), false));
   }
 
   private void environmentsElement(XNode context) throws Exception {
@@ -402,6 +412,14 @@ public class XMLConfigBuilder extends BaseBuilder {
       throw new BuilderException("Environment requires an id attribute.");
     }
     return environment.equals(id);
+  }
+
+  private static Configuration newConfig(Class<? extends Configuration> configClass) {
+    try {
+      return configClass.getDeclaredConstructor().newInstance();
+    } catch (Exception ex) {
+      throw new BuilderException("Failed to create a new Configuration instance.", ex);
+    }
   }
 
 }
