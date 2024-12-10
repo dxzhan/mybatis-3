@@ -1,5 +1,5 @@
 /*
- *    Copyright 2009-2023 the original author or authors.
+ *    Copyright 2009-2024 the original author or authors.
  *
  *    Licensed under the Apache License, Version 2.0 (the "License");
  *    you may not use this file except in compliance with the License.
@@ -62,7 +62,6 @@ class BaseExecutorTest extends BaseDataTest {
     config = new Configuration();
     config.setLazyLoadingEnabled(true);
     config.setUseGeneratedKeys(false);
-    config.setMultipleResultSetsEnabled(true);
     config.setUseColumnLabel(true);
     config.setDefaultStatementTimeout(5000);
     config.setDefaultFetchSize(100);
@@ -482,7 +481,8 @@ class BaseExecutorTest extends BaseDataTest {
   void testCreateCacheKeyWithAdditionalParameter() {
     TypeHandlerRegistry registry = config.getTypeHandlerRegistry();
 
-    MappedStatement mappedStatement = new MappedStatement.Builder(config, "testSelect", new StaticSqlSource(config, "some select statement"), SqlCommandType.SELECT).build();
+    MappedStatement mappedStatement = new MappedStatement.Builder(config, "testSelect",
+        new StaticSqlSource(config, "some select statement"), SqlCommandType.SELECT).build();
 
     Object parameterObject = 1;
 
@@ -513,7 +513,8 @@ class BaseExecutorTest extends BaseDataTest {
   void testCreateCacheKeyWithNull() {
     TypeHandlerRegistry registry = config.getTypeHandlerRegistry();
 
-    MappedStatement mappedStatement = new MappedStatement.Builder(config, "testSelect", new StaticSqlSource(config, "some select statement"), SqlCommandType.SELECT).build();
+    MappedStatement mappedStatement = new MappedStatement.Builder(config, "testSelect",
+        new StaticSqlSource(config, "some select statement"), SqlCommandType.SELECT).build();
 
     Object parameterObject = null;
 
@@ -540,7 +541,8 @@ class BaseExecutorTest extends BaseDataTest {
   void testCreateCacheKeyWithTypeHandler() {
     TypeHandlerRegistry registry = config.getTypeHandlerRegistry();
 
-    MappedStatement mappedStatement = new MappedStatement.Builder(config, "testSelect", new StaticSqlSource(config, "some select statement"), SqlCommandType.SELECT).build();
+    MappedStatement mappedStatement = new MappedStatement.Builder(config, "testSelect",
+        new StaticSqlSource(config, "some select statement"), SqlCommandType.SELECT).build();
 
     Object parameterObject = 1;
 
@@ -567,7 +569,8 @@ class BaseExecutorTest extends BaseDataTest {
   void testCreateCacheKeyWithMetaObject() {
     TypeHandlerRegistry registry = config.getTypeHandlerRegistry();
 
-    MappedStatement mappedStatement = new MappedStatement.Builder(config, "testSelect", new StaticSqlSource(config, "some select statement"), SqlCommandType.SELECT).build();
+    MappedStatement mappedStatement = new MappedStatement.Builder(config, "testSelect",
+        new StaticSqlSource(config, "some select statement"), SqlCommandType.SELECT).build();
 
     Author parameterObject = new Author(-1, "cbegin", "******", "cbegin@nowhere.com", "N/A", Section.NEWS);
 
@@ -577,8 +580,10 @@ class BaseExecutorTest extends BaseDataTest {
         add(new ParameterMapping.Builder(config, "username", registry.getTypeHandler(String.class)).build());
         add(new ParameterMapping.Builder(config, "password", registry.getTypeHandler(String.class)).build());
         add(new ParameterMapping.Builder(config, "email", registry.getTypeHandler(String.class)).build());
-        add(new ParameterMapping.Builder(config, "bio", registry.getTypeHandler(String.class)).jdbcType(JdbcType.VARCHAR).build());
-        add(new ParameterMapping.Builder(config, "favouriteSection", registry.getTypeHandler(Section.class)).jdbcType(JdbcType.VARCHAR).build());
+        add(new ParameterMapping.Builder(config, "bio", registry.getTypeHandler(String.class))
+            .jdbcType(JdbcType.VARCHAR).build());
+        add(new ParameterMapping.Builder(config, "favouriteSection", registry.getTypeHandler(Section.class))
+            .jdbcType(JdbcType.VARCHAR).build());
       }
     }, parameterObject);
 
