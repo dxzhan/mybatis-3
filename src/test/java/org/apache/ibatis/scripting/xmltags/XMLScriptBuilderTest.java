@@ -17,7 +17,9 @@
 package org.apache.ibatis.scripting.xmltags;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import org.apache.ibatis.builder.BuilderException;
 import org.apache.ibatis.mapping.SqlSource;
 import org.apache.ibatis.parsing.XPathParser;
 import org.apache.ibatis.session.Configuration;
@@ -30,16 +32,29 @@ class XMLScriptBuilderTest {
     String xml = """
         <script>
         select * from user
-        <where>
-        <if test="1==1">and id = 1</if>
-        <if test="1==1">and id > 0</if>
-        </where>
+        <where><if test="1==1">and id = 1</if><if test="1==1">and id > 0</if></where>
+        <if test="1==1">and id = 1</if><if test="1==1">and id > 0</if>
         </script>
         """;
     SqlSource sqlSource = new XMLScriptBuilder(new Configuration(), new XPathParser(xml).evalNode("/script"))
         .parseScriptNode();
-    assertThat(sqlSource.getBoundSql(1).getSql())
-        .containsPattern("(?m)^\\s*select \\* from user\\s+WHERE\\s+id = 1\\s+and id > 0\\s*$");
+    assertThat(sqlSource.getBoundSql(1).getSql()).containsPattern(
+        "(?m)^\\s*select \\* from user\\s+WHERE\\s+id = 1\\s+and id > 0\\s+and id = 1\\s+and id > 0\\s*$");
   }
 
+  @Test
+  void shouldThrowIfUnknownElementFound() {
+    String xml = """
+        <script>
+        select * from user
+        <choose>
+        <when test="1==1">and id = 1</when>
+        <otherwize>and id > 0</otherwize>
+        </choose>
+        </script>
+        """;
+    XMLScriptBuilder parser = new XMLScriptBuilder(new Configuration(), new XPathParser(xml).evalNode("/script"));
+    assertThatThrownBy(parser::parseScriptNode).isInstanceOf(BuilderException.class)
+        .hasMessage("Unknown element <otherwize> in SQL statement.");
+  }
 }

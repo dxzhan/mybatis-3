@@ -25,6 +25,7 @@ import org.apache.ibatis.executor.keygen.KeyGenerator;
 import org.apache.ibatis.executor.keygen.NoKeyGenerator;
 import org.apache.ibatis.logging.Log;
 import org.apache.ibatis.logging.LogFactory;
+import org.apache.ibatis.reflection.ParamNameResolver;
 import org.apache.ibatis.scripting.LanguageDriver;
 import org.apache.ibatis.session.Configuration;
 
@@ -56,6 +57,7 @@ public final class MappedStatement {
   private Log statementLog;
   private LanguageDriver lang;
   private String[] resultSets;
+  private ParamNameResolver paramNameResolver;
   private boolean dirtySelect;
 
   MappedStatement() {
@@ -71,8 +73,7 @@ public final class MappedStatement {
       mappedStatement.sqlSource = sqlSource;
       mappedStatement.statementType = StatementType.PREPARED;
       mappedStatement.resultSetType = ResultSetType.DEFAULT;
-      mappedStatement.parameterMap = new ParameterMap.Builder(configuration, "defaultParameterMap", null,
-          new ArrayList<>()).build();
+      mappedStatement.parameterMap = ParameterMap.buildEmpty("defaultParameterMap", null);
       mappedStatement.resultMaps = new ArrayList<>();
       mappedStatement.sqlCommandType = sqlCommandType;
       mappedStatement.keyGenerator = configuration.isUseGeneratedKeys() && SqlCommandType.INSERT.equals(sqlCommandType)
@@ -179,6 +180,11 @@ public final class MappedStatement {
 
     public Builder dirtySelect(boolean dirtySelect) {
       mappedStatement.dirtySelect = dirtySelect;
+      return this;
+    }
+
+    public Builder paramNameResolver(ParamNameResolver paramNameResolver) {
+      mappedStatement.paramNameResolver = paramNameResolver;
       return this;
     }
 
@@ -302,6 +308,10 @@ public final class MappedStatement {
 
   public boolean isDirtySelect() {
     return dirtySelect;
+  }
+
+  public ParamNameResolver getParamNameResolver() {
+    return paramNameResolver;
   }
 
   /**

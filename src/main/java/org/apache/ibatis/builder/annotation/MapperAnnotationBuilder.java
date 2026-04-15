@@ -1,5 +1,5 @@
 /*
- *    Copyright 2009-2025 the original author or authors.
+ *    Copyright 2009-2026 the original author or authors.
  *
  *    Licensed under the Apache License, Version 2.0 (the "License");
  *    you may not use this file except in compliance with the License.
@@ -21,6 +21,7 @@ import java.lang.annotation.Annotation;
 import java.lang.reflect.Array;
 import java.lang.reflect.GenericArrayType;
 import java.lang.reflect.Method;
+import java.lang.reflect.Parameter;
 import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Type;
 import java.util.ArrayList;
@@ -35,6 +36,7 @@ import java.util.Set;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
+import org.apache.ibatis.annotations.AnnotationConstants;
 import org.apache.ibatis.annotations.Arg;
 import org.apache.ibatis.annotations.CacheNamespace;
 import org.apache.ibatis.annotations.CacheNamespaceRef;
@@ -45,11 +47,15 @@ import org.apache.ibatis.annotations.Insert;
 import org.apache.ibatis.annotations.InsertProvider;
 import org.apache.ibatis.annotations.Lang;
 import org.apache.ibatis.annotations.MapKey;
+import org.apache.ibatis.annotations.NamedResultMap;
+import org.apache.ibatis.annotations.NamedResultMaps;
 import org.apache.ibatis.annotations.Options;
 import org.apache.ibatis.annotations.Options.FlushCachePolicy;
+import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Property;
 import org.apache.ibatis.annotations.Result;
 import org.apache.ibatis.annotations.ResultMap;
+import org.apache.ibatis.annotations.ResultOrdered;
 import org.apache.ibatis.annotations.ResultType;
 import org.apache.ibatis.annotations.Results;
 import org.apache.ibatis.annotations.Select;
@@ -81,6 +87,7 @@ import org.apache.ibatis.mapping.SqlCommandType;
 import org.apache.ibatis.mapping.SqlSource;
 import org.apache.ibatis.mapping.StatementType;
 import org.apache.ibatis.parsing.PropertyParser;
+import org.apache.ibatis.reflection.ParamNameResolver;
 import org.apache.ibatis.reflection.TypeParameterResolver;
 import org.apache.ibatis.scripting.LanguageDriver;
 import org.apache.ibatis.session.Configuration;
@@ -120,6 +127,15 @@ public class MapperAnnotationBuilder {
       assistant.setCurrentNamespace(type.getName());
       parseCache();
       parseCacheRef();
+
+      if (type.isAnnotationPresent(NamedResultMap.class)) {
+        parseNamedResultMap(type.getAnnotation(NamedResultMap.class));
+      }
+
+      if (type.isAnnotationPresent(NamedResultMaps.class)) {
+        parseNamedResultMaps();
+      }
+
       for (Method method : type.getMethods()) {
         if (!canHaveStatement(method)) {
           continue;
@@ -161,7 +177,7 @@ public class MapperAnnotationBuilder {
       }
       if (inputStream != null) {
         XMLMapperBuilder xmlParser = new XMLMapperBuilder(inputStream, assistant.getConfiguration(), xmlResource,
-            configuration.getSqlFragments(), type.getName());
+            configuration.getSqlFragments(), type);
         xmlParser.parse();
       }
     }
@@ -217,6 +233,39 @@ public class MapperAnnotationBuilder {
     String resultMapId = generateResultMapName(method);
     applyResultMap(resultMapId, returnType, args, results, typeDiscriminator);
     return resultMapId;
+  }
+
+  private void parseNamedResultMaps() {
+    NamedResultMaps namedResultMaps = type.getAnnotation(NamedResultMaps.class);
+    for (NamedResultMap namedResultMap : namedResultMaps.value()) {
+      parseNamedResultMap(namedResultMap);
+    }
+  }
+
+  private void parseNamedResultMap(NamedResultMap namedResultMap) {
+    validateNamedResultMap(namedResultMap);
+
+    String resultMapId = type.getName() + '.' + namedResultMap.id();
+    Class<?> returnType = namedResultMap.javaType();
+    Arg[] args = namedResultMap.constructorArguments();
+    Result[] results = namedResultMap.propertyMappings();
+    TypeDiscriminator typeDiscriminator = namedResultMap.typeDiscriminator();
+    if (AnnotationConstants.NULL_TYPE_DISCRIMINATOR.equals(typeDiscriminator.column())) {
+      typeDiscriminator = null;
+    }
+
+    applyResultMap(resultMapId, returnType, args, results, typeDiscriminator);
+  }
+
+  private void validateNamedResultMap(NamedResultMap namedResultMap) {
+    if (!AnnotationConstants.NULL_TYPE_DISCRIMINATOR.equals(namedResultMap.typeDiscriminator().column())) {
+      return;
+    }
+
+    if (namedResultMap.constructorArguments().length == 0 && namedResultMap.propertyMappings().length == 0) {
+      throw new BuilderException("If there is no type discriminator, then the NamedResultMap annotation "
+          + "requires at least one constructor argument or property mapping");
+    }
   }
 
   private String generateResultMapName(Method method) {
@@ -282,14 +331,17 @@ public class MapperAnnotationBuilder {
 
   void parseStatement(Method method) {
     final Class<?> parameterTypeClass = getParameterType(method);
+    final ParamNameResolver paramNameResolver = new ParamNameResolver(configuration, method, type);
     final LanguageDriver languageDriver = getLanguageDriver(method);
 
     getAnnotationWrapper(method, true, statementAnnotationTypes).ifPresent(statementAnnotation -> {
       final SqlSource sqlSource = buildSqlSource(statementAnnotation.getAnnotation(), parameterTypeClass,
-          languageDriver, method);
+          paramNameResolver, languageDriver, method);
       final SqlCommandType sqlCommandType = statementAnnotation.getSqlCommandType();
       final Options options = getAnnotationWrapper(method, false, Options.class).map(x -> (Options) x.getAnnotation())
           .orElse(null);
+      final ResultOrdered resultOrderedAnnotation = getAnnotationWrapper(method, false, ResultOrdered.class)
+          .map(x -> (ResultOrdered) x.getAnnotation()).orElse(null);
       final String mappedStatementId = type.getName() + "." + method.getName();
 
       final KeyGenerator keyGenerator;
@@ -301,7 +353,7 @@ public class MapperAnnotationBuilder {
             .map(x -> (SelectKey) x.getAnnotation()).orElse(null);
         if (selectKey != null) {
           keyGenerator = handleSelectKeyAnnotation(selectKey, mappedStatementId, getParameterType(method),
-              languageDriver);
+              paramNameResolver, languageDriver);
           keyProperty = selectKey.keyProperty();
         } else if (options == null) {
           keyGenerator = configuration.isUseGeneratedKeys() ? Jdbc3KeyGenerator.INSTANCE : NoKeyGenerator.INSTANCE;
@@ -337,6 +389,11 @@ public class MapperAnnotationBuilder {
         }
       }
 
+      boolean isResultOrdered = false;
+      if (resultOrderedAnnotation != null) {
+        isResultOrdered = resultOrderedAnnotation.value();
+      }
+
       String resultMapId = null;
       if (isSelect) {
         ResultMap resultMapAnnotation = method.getAnnotation(ResultMap.class);
@@ -351,9 +408,10 @@ public class MapperAnnotationBuilder {
           // ParameterMapID
           null, parameterTypeClass, resultMapId, getReturnType(method, type), resultSetType, flushCache, useCache,
           // TODO gcode issue #577
-          false, keyGenerator, keyProperty, keyColumn, statementAnnotation.getDatabaseId(), languageDriver,
+          isResultOrdered, keyGenerator, keyProperty, keyColumn, statementAnnotation.getDatabaseId(), languageDriver,
           // ResultSets
-          options != null ? nullOrEmpty(options.resultSets()) : null, statementAnnotation.isDirtySelect());
+          options != null ? nullOrEmpty(options.resultSets()) : null, statementAnnotation.isDirtySelect(),
+          paramNameResolver);
     });
   }
 
@@ -368,16 +426,16 @@ public class MapperAnnotationBuilder {
 
   private Class<?> getParameterType(Method method) {
     Class<?> parameterType = null;
-    Class<?>[] parameterTypes = method.getParameterTypes();
-    for (Class<?> currentParameterType : parameterTypes) {
-      if (!RowBounds.class.isAssignableFrom(currentParameterType)
-          && !ResultHandler.class.isAssignableFrom(currentParameterType)) {
-        if (parameterType == null) {
-          parameterType = currentParameterType;
-        } else {
-          // issue #135
-          parameterType = ParamMap.class;
-        }
+    Parameter[] parameters = method.getParameters();
+    for (Parameter param : parameters) {
+      Class<?> paramType = param.getType();
+      if (RowBounds.class.isAssignableFrom(paramType) || ResultHandler.class.isAssignableFrom(paramType)) {
+        continue;
+      }
+      if (parameterType == null && param.getAnnotation(Param.class) == null) {
+        parameterType = paramType;
+      } else {
+        return ParamMap.class;
       }
     }
     return parameterType;
@@ -543,7 +601,7 @@ public class MapperAnnotationBuilder {
   }
 
   private KeyGenerator handleSelectKeyAnnotation(SelectKey selectKeyAnnotation, String baseStatementId,
-      Class<?> parameterTypeClass, LanguageDriver languageDriver) {
+      Class<?> parameterTypeClass, ParamNameResolver paramNameResolver, LanguageDriver languageDriver) {
     String id = baseStatementId + SelectKeyGenerator.SELECT_KEY_SUFFIX;
     Class<?> resultTypeClass = selectKeyAnnotation.resultType();
     StatementType statementType = selectKeyAnnotation.statementType();
@@ -562,12 +620,13 @@ public class MapperAnnotationBuilder {
     ResultSetType resultSetTypeEnum = null;
     String databaseId = selectKeyAnnotation.databaseId().isEmpty() ? null : selectKeyAnnotation.databaseId();
 
-    SqlSource sqlSource = buildSqlSource(selectKeyAnnotation, parameterTypeClass, languageDriver, null);
+    SqlSource sqlSource = buildSqlSourceFromStrings(selectKeyAnnotation.statement(), parameterTypeClass,
+        paramNameResolver, languageDriver);
     SqlCommandType sqlCommandType = SqlCommandType.SELECT;
 
     assistant.addMappedStatement(id, sqlSource, statementType, sqlCommandType, fetchSize, timeout, parameterMap,
         parameterTypeClass, resultMap, resultTypeClass, resultSetTypeEnum, flushCache, useCache, false, keyGenerator,
-        keyProperty, keyColumn, databaseId, languageDriver, null, false);
+        keyProperty, keyColumn, databaseId, languageDriver, null, false, paramNameResolver);
 
     id = assistant.applyCurrentNamespace(id, false);
 
@@ -577,26 +636,27 @@ public class MapperAnnotationBuilder {
     return answer;
   }
 
-  private SqlSource buildSqlSource(Annotation annotation, Class<?> parameterType, LanguageDriver languageDriver,
-      Method method) {
+  private SqlSource buildSqlSource(Annotation annotation, Class<?> parameterType, ParamNameResolver paramNameResolver,
+      LanguageDriver languageDriver, Method method) {
     if (annotation instanceof Select) {
-      return buildSqlSourceFromStrings(((Select) annotation).value(), parameterType, languageDriver);
-    }
-    if (annotation instanceof Update) {
-      return buildSqlSourceFromStrings(((Update) annotation).value(), parameterType, languageDriver);
+      return buildSqlSourceFromStrings(((Select) annotation).value(), parameterType, paramNameResolver, languageDriver);
+    } else if (annotation instanceof Update) {
+      return buildSqlSourceFromStrings(((Update) annotation).value(), parameterType, paramNameResolver, languageDriver);
     } else if (annotation instanceof Insert) {
-      return buildSqlSourceFromStrings(((Insert) annotation).value(), parameterType, languageDriver);
+      return buildSqlSourceFromStrings(((Insert) annotation).value(), parameterType, paramNameResolver, languageDriver);
     } else if (annotation instanceof Delete) {
-      return buildSqlSourceFromStrings(((Delete) annotation).value(), parameterType, languageDriver);
+      return buildSqlSourceFromStrings(((Delete) annotation).value(), parameterType, paramNameResolver, languageDriver);
     } else if (annotation instanceof SelectKey) {
-      return buildSqlSourceFromStrings(((SelectKey) annotation).statement(), parameterType, languageDriver);
+      return buildSqlSourceFromStrings(((SelectKey) annotation).statement(), parameterType, paramNameResolver,
+          languageDriver);
     }
     return new ProviderSqlSource(assistant.getConfiguration(), annotation, type, method);
   }
 
   private SqlSource buildSqlSourceFromStrings(String[] strings, Class<?> parameterTypeClass,
-      LanguageDriver languageDriver) {
-    return languageDriver.createSqlSource(configuration, String.join(" ", strings).trim(), parameterTypeClass);
+      ParamNameResolver paramNameResolver, LanguageDriver languageDriver) {
+    return languageDriver.createSqlSource(configuration, String.join(" ", strings).trim(), parameterTypeClass,
+        paramNameResolver);
   }
 
   @SafeVarargs

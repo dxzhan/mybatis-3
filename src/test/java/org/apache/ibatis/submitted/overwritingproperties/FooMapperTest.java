@@ -1,5 +1,5 @@
 /*
- *    Copyright 2009-2024 the original author or authors.
+ *    Copyright 2009-2025 the original author or authors.
  *
  *    Licensed under the Apache License, Version 2.0 (the "License");
  *    you may not use this file except in compliance with the License.
@@ -28,7 +28,7 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
-/*
+/**
  * @author jjensen
  */
 class FooMapperTest {
@@ -72,7 +72,7 @@ class FooMapperTest {
     // <result property="field4" column="field3" jdbcType="INTEGER"/>
     Assertions.assertEquals(inserted.getField3(), selected.getField4());
 
-    // field4 is explicitly remapped to field3 in the resultmap
+    // field4 is explicitly remapped to field3 in the resultMap
     // <result property="field3" column="field4" jdbcType="INTEGER"/>
     Assertions.assertEquals(inserted.getField4(), selected.getField3());
 
